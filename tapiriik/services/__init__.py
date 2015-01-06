@@ -24,6 +24,8 @@ from tapiriik.services.VeloHero import VeloHeroService
 VeloHero = VeloHeroService()
 from tapiriik.services.TrainerRoad import TrainerRoadService
 TrainerRoad = TrainerRoadService()
+from tapiriik.services.Dailymile import DailymileService
+Dailymile = DailymileService()
 
 PRIVATE_SERVICES = []
 try:

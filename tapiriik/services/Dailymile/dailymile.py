@@ -86,10 +86,14 @@ class DailymileService(ServiceBase):
             raise APIException("Invalid code")
         data = response.json()
 
-        authorizationData = {"OAuthToken": data["access_token"]}
+#        authorizationData = {"OAuthToken": data["access_token"]}
+        authorizationData = {"oauth_token": data["access_token"]}
         # Retrieve the user ID, meh.
         self._globalRateLimit()
-        id_resp = requests.get("https://api.dailymile.com/people/me.json", headers=self._apiHeaders(ServiceRecord({"Authorization": authorizationData})))
+#        id_resp = requests.get("https://api.dailymile.com/people/me.json", headers=self._apiHeaders(ServiceRecord({"Authorization": authorizationData})))
+        id_resp = requests.get("https://api.dailymile.com/people/me.json", data=authorizationData)
+        if response.status_code != 200:
+            raise APIException("Unable to retrieve username: " + str(response.status_code))
         return (id_resp.json()["username"], authorizationData)
 
     def RevokeAuthorization(self, serviceRecord):
@@ -147,15 +151,15 @@ class DailymileService(ServiceBase):
                 distunit = ride["workout"]["distance"]["units"]
                 distmeas = ride["workout"]["distance"]["value"]
 
-                if (distunit == "miles")
+                if (distunit == "miles"):
                     activity.Stats.Distance = ActivityStatistic(ActivityStatisticUnit.Miles, value=distmeas)
-                elif (distunit == "yards")
+                elif (distunit == "yards"):
                     activity.Stats.Distance = ActivityStatistic(ActivityStatisticUnit.Miles, value=(distmeas/1760))
-                elif (distunit == "meters")
+                elif (distunit == "meters"):
                     activity.Stats.Distance = ActivityStatistic(ActivityStatisticUnit.Meters, value=distmeas)
-                elif (distunit == "kilometers")
+                elif (distunit == "kilometers"):
                     activity.Stats.Distance = ActivityStatistic(ActivityStatisticUnit.Kilometers, value=distmeas)
-                else
+                else:
                     exclusions.append(APIExcludeActivity("Unsupported distance unit %s" % distunit, activity_id=ride["id"], user_exception=UserException(UserException.Other)))
                     logger.debug("\t\tUnknown measurement unit")
                     continue
