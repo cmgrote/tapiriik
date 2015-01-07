@@ -29,7 +29,6 @@ class DailymileService(ServiceBase):
     DisplayAbbreviation = "DMI"
     AuthenticationType = ServiceAuthenticationType.OAuth
     UserProfileURL = "http://www.dailymile.com/people/{0}"
-    #    UserActivityURL = "http://app.strava.com/activities/{1}"   # hoping this is unused, as not sure what it is for Dailymile?
     AuthenticationNoFrame = True  # They don't prevent the iframe, it just looks really ugly.
     LastUpload = None
 
@@ -107,12 +106,11 @@ class DailymileService(ServiceBase):
         #  you can't revoke the tokens dailymile distributes :\
         pass
 
-    # Can uni-directional sync be configured?  Dailymile API for retrieving activities appears very limited (no GPS data, etc)
+    # NOTE: Dailymile API for retrieving activities appears very limited (no GPS data, etc)
     def DownloadActivityList(self, svcRecord, exhaustive=False):
         activities = []
         exclusions = []
         before = earliestDate = None
-        #        page = 1 # ... only option seems to be the "page" parameter, with 1 being the most recent 20 activities (fixed size), and working backwards from there
 
         while True:
             if before is not None and before < 0:
@@ -120,7 +118,6 @@ class DailymileService(ServiceBase):
             logger.debug("Req with before=" + str(before) + "/" + str(earliestDate))
             self._globalRateLimit()
             resp = requests.get("https://api.dailymile.com/people/" + str(svcRecord.ExternalID) + "/entries.json", headers=self._apiHeaders(svcRecord), params={"until": before})
-#            resp = requests.get("https://api.dailymile.com/people/" + str(svcRecord.ExternalID) + "/entries.json", params=self._paramsIncludingAuth({"page": page}, svcRecord))
             if resp.status_code == 401:
                 raise APIException("No authorization to retrieve activity list", block=True, user_exception=UserException(UserExceptionType.Authorization, intervention_required=True))
 
@@ -133,7 +130,6 @@ class DailymileService(ServiceBase):
             elif not len(reqdata["entries"]):
                 break  # Same as above -- could have sworn I once saw just an empty array, with no 'entries', so leaving both
 
-            # TODO: this does not seem to be looping properly -- it's only picking up the first entry, then breaking out
             for ride in reqdata["entries"]:
                 
                 # Because Dailymile can also have media entries (just photos, no workout data), we need to ensure
@@ -145,16 +141,27 @@ class DailymileService(ServiceBase):
                     activity.TZ = pytz.UTC
                     # Pretty sure what's recorded on Dailymile is the completion time (time of posting)
                     activity.EndTime = pytz.utc.localize(datetime.strptime(ride["at"], self._getDateFmt()))
-                    #                    activity.StartTime = pytz.utc.localize(datetime.strptime(ride["at"], self._getDateFmt()))
-                    logger.debug("\tActivity e/t %s: %s" % (activity.EndTime, ride["workout"]["title"]))
+                    if ('title' in ride["workout"]):
+                        logger.debug("\tActivity e/t %s: %s" % (activity.EndTime, ride["workout"]["title"]))
+                    else:
+                        logger.debug("\tActivity e/t %s: %s" % (activity.EndTime, "Untitled"))
                     if not earliestDate or activity.EndTime < earliestDate:
                         earliestDate = activity.EndTime
-                        before = calendar.timegm(activity.EndTime.astimezone(pytz.utc).timetuple())
-                    
+                        # This is ugly, but unfortunately Dailymile uses a <= comparison, not a strictly < comparison, so without this we risk an infinite loop
+                        # (and if we just subtract 1 second we risk skipping entries that all have the same completion time but happen to span multiple pages)
+                        # [though if there are ~20 entries all with the same completion time, they'll probably be skipped anyway]
+                        before2 = calendar.timegm(activity.EndTime.astimezone(pytz.utc).timetuple())
+                        if before2 == before:
+                            before = (before2 - 1)
+                        else:
+                            before = before2
+    
                     # Duration isn't mandatory on Dailymile, and may be missing
                     if ('duration' in ride["workout"]):
                         # Hope 'timedelta' assumes we just send it an elapsed time / duration (in seconds) of the activity (?)
                         activity.StartTime = activity.EndTime - timedelta(0, ride["workout"]["duration"])
+                    else:
+                        activity.StartTime = activity.EndTime # but since other bits expect both to be set, we'll make a default duration of 0
 
                     activity.ServiceData = {"ActivityID": ride["id"]}
 
@@ -242,20 +249,17 @@ class DailymileService(ServiceBase):
 
         upload_id = None
         
-        # Dailymile API says "message" is optional, but leaving it out (or blank) returns a 422 status saying it can't be blank...
         req = {}
-        if activity.Notes is not None:
-            req["message"] = activity.Notes
-        #        else:
-        #            req["message"] = activity.Name if activity.Name else activity.Type
         req["workout"] = {
                             "title": activity.Name if activity.Name else activity.Type,
                             "activity_type": self._activityTypeMappings[activity.Type],
                             "duration": round((activity.EndTime - activity.StartTime).total_seconds()),
                             "completed_at": activity.EndTime.astimezone(pytz.utc).strftime(self._getDateFmt())
                         }
+        if activity.Notes is not None:
+            req["message"] = activity.Notes
 
-        # TODO: need to set units according to user preference (not hard-coded)
+        # TODO: is there a way to set units according to user preference (not hard-coded)?  Or just refer to rule #24...
         # Swimming is the only activity type that does not accept "km" as a valid unit, and requires meters or yards
         if(activity.Type == "Swimming"):
             req["workout"]["distance"] = {
@@ -267,7 +271,9 @@ class DailymileService(ServiceBase):
                                             "value": activity.Stats.Distance.asUnits(ActivityStatisticUnit.Kilometers).Value,
                                             "units": "kilometers"
                                         }
-        
+
+        logger.debug("Req = " + str(json.dumps(req)))
+
         params = self._paramsIncludingAuth({}, serviceRecord)
         self._globalRateLimit()
 
@@ -284,7 +290,7 @@ class DailymileService(ServiceBase):
 
         upload_id = response.json()["id"]
 
-        # Only then go on with uploading GPS data if it exists (Dailymile needs this to be a separate step)
+        # Only then go on with uploading GPS data if it exists (Dailymile API seems to need this to be a separate step)
         if activity.CountTotalWaypoints():
             if "gpx" in activity.PrerenderedFormats:
                 logger.debug("Using prerendered GPX")
