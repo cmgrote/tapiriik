@@ -56,6 +56,7 @@ class StravaService(ServiceBase):
         "Hike": ActivityType.Hiking,
         "Walk": ActivityType.Walking,
         "AlpineSki": ActivityType.DownhillSkiing,
+        "CrossCountrySkiing": ActivityType.CrossCountrySkiing,
         "NordicSki": ActivityType.CrossCountrySkiing,
         "BackcountrySki": ActivityType.DownhillSkiing,
         "Swim": ActivityType.Swimming,
