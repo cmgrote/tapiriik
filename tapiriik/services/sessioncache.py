@@ -1,36 +1,30 @@
 from datetime import datetime
+from tapiriik.database import redis
+import pickle
 
 class SessionCache:
-	def __init__(self, lifetime, freshen_on_get=False):
-		self._lifetime = lifetime
-		self._autorefresh = freshen_on_get
-		self._cache = {}
+    def __init__(self, scope, lifetime, freshen_on_get=False):
+        self._lifetime = lifetime
+        self._autorefresh = freshen_on_get
+        self._scope = scope
+        self._cacheKey = "sessioncache:%s:%s" % (self._scope, "%s")
 
-	def Get(self, pk, freshen=False):
-		if pk not in self._cache:
-			return
-		record = self._cache[pk]
-		if record.Expired():
-			del self._cache[pk]
-			return None
-		if self._autorefresh or freshen:
-			record.Refresh()
-		return record.Get()
+    def Get(self, pk, freshen=False):
+        res = redis.get(self._cacheKey % pk)
+        if res:
+            try:
+                res = pickle.loads(res)
+            except pickle.UnpicklingError:
+                self.Delete(pk)
+                res = None
+            else:
+                if self._autorefresh or freshen:
+                    redis.expire(self._cacheKey % pk, self._lifetime)
+            return res
 
-	def Set(self, pk, value):
-		self._cache[pk] = SessionCacheRecord(value, self._lifetime)
+    def Set(self, pk, value, lifetime=None):
+        lifetime = lifetime or self._lifetime
+        redis.setex(self._cacheKey % pk, pickle.dumps(value), lifetime)
 
-class SessionCacheRecord:
-	def __init__(self, data, lifetime):
-		self._value = data
-		self._lifetime = lifetime
-		self.Refresh()
-
-	def Expired(self):
-		return self._timestamp < datetime.utcnow() - self._lifetime
-
-	def Refresh(self):
-		self._timestamp = datetime.utcnow()
-
-	def Get(self):
-		return self._value
+    def Delete(self, pk):
+        redis.delete(self._cacheKey % pk)

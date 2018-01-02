@@ -40,7 +40,7 @@ class RideWithGPSService(ServiceBase):
 
     SupportsHR = SupportsCadence = True
 
-    _sessionCache = SessionCache(lifetime=timedelta(minutes=30), freshen_on_get=True)
+    _sessionCache = SessionCache("rwgps", lifetime=timedelta(minutes=30), freshen_on_get=True)
 
     def _add_auth_params(self, params=None, record=None):
         """
@@ -108,7 +108,7 @@ class RideWithGPSService(ServiceBase):
         # They don't actually support paging right now, for whatever reason
         params = self._add_auth_params({}, record=serviceRecord)
 
-        res = requests.get("http://ridewithgps.com/users/{}/trips.json".format(serviceRecord.ExternalID), params=params)
+        res = requests.get("https://ridewithgps.com/users/{}/trips.json".format(serviceRecord.ExternalID), params=params)
         res = res.json()
 
         # Apparently some API users are seeing this new result format - I'm not
@@ -127,10 +127,10 @@ class RideWithGPSService(ServiceBase):
             activity = UploadedActivity()
 
             logger.debug("Name " + act["name"] + ":")
-            if len(act["name"].strip()):
+            if act.get("name", None) and len(act["name"].strip()):
                 activity.Name = act["name"]
 
-            if len(act["description"].strip()):
+            if act.get("description", None) and len(act["description"].strip()):
                 activity.Notes = act["description"]
 
             activity.GPS = act["is_gps"]

@@ -40,6 +40,15 @@ class ServiceBase:
     ReceivesActivities = True # Any at all?
     ReceivesStationaryActivities = True # Manually-entered?
     ReceivesNonGPSActivitiesWithOtherSensorData = True # Trainer-ish?
+    SuppliesActivities = True
+    # Services with this flag unset will receive an explicit date range for activity listing,
+    # rather than the exhaustive flag alone. They are also processed after all other services.
+    # An account must have at least one service that supports exhaustive listing.
+    SupportsExhaustiveListing = True
+
+
+    SupportsActivityDeletion = False
+
 
     # Causes synchronizations to be skipped until...
     #  - One is triggered (via IDs returned by ExternalIDsForPartialSyncTrigger or PollPartialSyncTrigger)
@@ -77,7 +86,11 @@ class ServiceBase:
     def WebInit(self):
         pass
 
-    def GenerateUserAuthorizationURL(self, level=None):
+    # Return an URL pointing directly to the specified activity on the remote site
+    def UserUploadedActivityURL(self, uploadId):
+        raise NotImplementedError
+
+    def GenerateUserAuthorizationURL(self, session, level=None):
         raise NotImplementedError
 
     def Authorize(self, email, password, store=False):
@@ -86,13 +99,17 @@ class ServiceBase:
     def RevokeAuthorization(self, serviceRecord):
         raise NotImplementedError
 
-    def DownloadActivityList(self, serviceRecord, exhaustive=False):
+    def DownloadActivityList(self, serviceRecord, exhaustive_start_date=None):
         raise NotImplementedError
 
     def DownloadActivity(self, serviceRecord, activity):
         raise NotImplementedError
 
+    # Should return an uploadId for storage and potential use in DeleteActivity
     def UploadActivity(self, serviceRecord, activity):
+        raise NotImplementedError
+
+    def DeleteActivity(self, serviceRecord, uploadId):
         raise NotImplementedError
 
     def DeleteCachedData(self, serviceRecord):
@@ -124,6 +141,10 @@ class ServiceBase:
 
     def ExternalIDsForPartialSyncTrigger(self, req):
         raise NotImplementedError
+
+    def PartialSyncTriggerGET(self, req):
+        from django.http import HttpResponse
+        return HttpResponse(status=204)
 
     def ConfigurationUpdating(self, serviceRecord, newConfig, oldConfig):
         pass

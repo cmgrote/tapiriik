@@ -7,6 +7,7 @@ from tapiriik.auth import TOTP, DiagnosticsUser, User
 from bson.objectid import ObjectId
 import hashlib
 import json
+import urllib.parse
 from datetime import datetime, timedelta
 
 def diag_requireAuth(view):
@@ -18,6 +19,11 @@ def diag_requireAuth(view):
 
 @diag_requireAuth
 def diag_dashboard(req):
+    return redirect("diagnostics_queue_dashboard")
+
+
+@diag_requireAuth
+def diag_queue_dashboard(req):
     context = {}
     stats = db.stats.find_one()
 
@@ -29,13 +35,6 @@ def diag_dashboard(req):
     context["lockedSyncUsers"] = list(db.users.find({"SynchronizationWorker": {"$ne": None}}))
     context["lockedSyncRecords"] = len(context["lockedSyncUsers"])
     context["queuedUnlockedUsers"] = list(db.users.find({"SynchronizationWorker": {"$exists": False}, "QueuedAt": {"$ne": None}}))
-
-    context["pendingSynchronizations"] = db.users.find({"NextSynchronization": {"$lt": datetime.utcnow()}}).count()
-    context["pendingSynchronizationsLocked"] = db.users.find({"NextSynchronization": {"$lt": datetime.utcnow()}, "SynchronizationWorker": {"$ne": None}}).count()
-    context["pendingSynchronizationsLockedQueued"] = db.users.find({"NextSynchronization": {"$lt": datetime.utcnow()}, "QueuedAt": {"$ne": None, "$exists": True}, "SynchronizationWorker": {"$ne": None}}).count()
-    context["pendingSynchronizationsQueued"] = db.users.find({"NextSynchronization": {"$lt": datetime.utcnow()}, "QueuedAt": {"$ne": None, "$exists": True}}).count()
-    context["queuedSynchronizations"] = db.users.find({"QueuedAt": {"$lt": datetime.utcnow()}}).count()
-    context["queuedSynchronizationsLocked"] = db.users.find({"QueuedAt": {"$lt": datetime.utcnow()}, "SynchronizationWorker": {"$ne": None}}).count()
 
     context["userCt"] = db.users.count()
     context["scheduledCt"] = db.users.find({"$or":[{"NextSynchronization": {"$ne": None, "$exists": True}}, {"QueuedAt": {"$ne": None, "$exists": True}}]}).count()
@@ -81,31 +80,31 @@ def diag_dashboard(req):
         db.users.update({"QueuedAt": {"$lt": datetime.utcnow()}, "$or": [{"SynchronizationWorker": {"$exists": False}}, {"SynchronizationWorker": None}]}, {"$set": {"NextSynchronization": datetime.utcnow(), "QueuedGeneration": "manual"}, "$unset": {"QueuedAt": True}}, multi=True)
 
     if delta:
-        return redirect("diagnostics_dashboard")
+        return redirect("diagnostics_queue_dashboard")
 
     return render(req, "diag/dashboard.html", context)
 
 @diag_requireAuth
 def diag_errors(req):
     context = {}
-    syncErrorListing = list(db.common_sync_errors.find().sort("value.count", -1))
-    syncErrorsAffectingServices = [service for error in syncErrorListing for service in error["value"]["connections"]]
-    syncErrorsAffectingUsers = list(db.users.find({"ConnectedServices.ID": {"$in": syncErrorsAffectingServices}}))
+    syncErrorListing = list(db.common_sync_errors.find({"value.count": {"$gt": 5}}, {"value.exemplar": 1, "value.count": 1, "value.recency_avg": 1, "_id.service": 1}))
     syncErrorSummary = []
-    autoSyncErrorSummary = []
-    for error in syncErrorListing:
-        serviceSet = set(error["value"]["connections"])
-        affected_auto_users = [{"id": user["_id"], "highlight": "LastSynchronization" in user and user["LastSynchronization"] > datetime.utcnow() - timedelta(minutes=5), "outdated": user["LastSynchronizationVersion"] != SITE_VER if "LastSynchronizationVersion" in user else True} for user in syncErrorsAffectingUsers if set([conn["ID"] for conn in user["ConnectedServices"]]) & serviceSet and "NextSynchronization" in user and user["NextSynchronization"] is not None]
-        affected_users = [{"id": user["_id"], "highlight": False, "outdated": False} for user in syncErrorsAffectingUsers if set([conn["ID"] for conn in user["ConnectedServices"]]) & serviceSet and ("NextSynchronization" not in user or user["NextSynchronization"] is None)]
-        if len(affected_auto_users):
-            autoSyncErrorSummary.append({"service": error["_id"]["service"], "message": error["value"]["exemplar"], "count": int(error["value"]["count"]), "affected_users": affected_auto_users})
-        if len(affected_users):
-            syncErrorSummary.append({"service": error["_id"]["service"], "message": error["value"]["exemplar"], "count": int(error["value"]["count"]), "affected_users": affected_users})
+    for error in sorted(syncErrorListing, key=lambda error: error["value"]["count"], reverse=True):
+        syncErrorSummary.append({"id": urllib.parse.quote(json.dumps(error["_id"])), "service": error["_id"]["service"], "message": error["value"]["exemplar"], "count": int(error["value"]["count"]), "average_age": error["value"].get("recency_avg", 0)})
 
-    context["autoSyncErrorSummary"] = autoSyncErrorSummary
     context["syncErrorSummary"] = syncErrorSummary
 
     return render(req, "diag/errors.html", context)
+
+@diag_requireAuth
+def diag_error(req, error):
+    error = db.common_sync_errors.find_one({"_id": json.loads(urllib.parse.unquote(error))})
+    if not error:
+        return render(req, "diag/error_error_not_found.html")
+    affected_service_ids = error["value"]["connections"]
+    affected_user_ids = [x["_id"] for x in db.users.find({"ConnectedServices.ID": {"$in": affected_service_ids}}, {"_id":1})]
+
+    return render(req, "diag/error.html", {"error": error, "affected_user_ids": affected_user_ids})
 
 
 @diag_requireAuth
@@ -192,6 +191,10 @@ def diag_user(req, user):
         from tapiriik.services import Service
         svcRec = Service.GetServiceRecordByID(req.POST["id"])
         svcRec.SetPartialSyncTriggerSubscriptionState(not svcRec.PartialSyncTriggerSubscribed)
+    elif "svc_toggle_poll_trigger" in req.POST:
+        from tapiriik.services import Service
+        svcRec = Service.GetServiceRecordByID(req.POST["id"])
+        db.connections.update({"_id": ObjectId(req.POST["id"])}, {"$set": {"TriggerPartialSync": not svcRec.TriggerPartialSync}})
     elif "svc_tryagain" in req.POST:
         from tapiriik.services import Service
         svcRec = Service.GetServiceRecordByID(req.POST["id"])

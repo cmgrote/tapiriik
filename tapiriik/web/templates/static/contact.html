@@ -3,16 +3,18 @@
 {% block title %}contact{% endblock %}
 {% block content %}
 <div class="contactBlock">
-	<h1>For quick questions</h1>
-	<p>(but I can't answer questions specific to your account)</p>
+	<h1>For system status updates</h1>
 	<a href="https://twitter.com/tapiriik" target="_new" class="large">@tapiriik</a>
 </div>
 <div class="contactBlock">
 	<h1>For help with your account</h1>
-	<p>(or if you've got a feature request, question about the system, etc.)</p>
-	<a href="mailto:contact@tapiriik.com{% if user %}?body=My tapiriik user ID is {{ user|dict_get:'_id' }}{% endif %}" target="_blank" class="large">contact@tapiriik.com</a>
-	<p>{% if not user %}I'll need your User ID to diagnose issues with your account - once you've connected to a service, it'll be included in the link above{% endif %}</p>
-	<p>If you're tracking down an activity that hasn't synchronized, <b>please check <a href="{% url 'activities_dashboard' %}">the activity dashboard</a></b>. It'll do its best to tell you what went wrong. If you can't get things working yourself, make sure to <b>include the date of the problem activity in your message</b>.</p>
+    <p>Unfortunately, nowadays too many people use tapiriik to promise 1-on-1 support for synchronization problems any more - there's only one of me and a whole lot more of you!</p>
+    <p>If you are having issues with your account, <b>please check <a href="{% url 'activities_dashboard' %}">the activity dashboard</a></b> - it'll do its best to tell you what went wrong.</p>
+    <p>If you can't resolve the issue and would like your money back, use the email below to request a refund. And, if you had emailed me previously regarding your account and never received a reply, please accept my apologies.</p>
 </div>
-<p>In either case, I'll try to get back to you as soon as possible, subject to the whims of my day job and the current riding conditions.</p>
+<div class="contactBlock">
+	<h1>For billing support</h1>
+	<a href="mailto:contact@tapiriik.com{% if user %}?body=My tapiriik user ID is {{ user|dict_get:'_id' }}{% endif %}" target="_blank" class="large">contact@tapiriik.com</a>
+	<p>If you're dissatisfied with the service and want a refund, make sure to mention that in the subject line so I can respond quickly.</p>
+</div>
 {% endblock %}

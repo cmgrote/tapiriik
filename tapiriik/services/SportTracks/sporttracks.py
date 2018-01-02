@@ -137,7 +137,7 @@ class SportTracksService(ServiceBase):
 
     SupportedActivities = list(_reverseActivityMappings.keys())
 
-    _tokenCache = SessionCache(lifetime=timedelta(minutes=115), freshen_on_get=False)
+    _tokenCache = SessionCache("sporttracks", lifetime=timedelta(minutes=115), freshen_on_get=False)
 
     def WebInit(self):
         self.UserAuthorizationURL = "https://api.sporttracks.mobi/oauth2/authorize?response_type=code&client_id=%s&state=mobi_api" % SPORTTRACKS_CLIENT_ID
@@ -175,12 +175,8 @@ class SportTracksService(ServiceBase):
         access_token = response.json()["access_token"]
         refresh_token = response.json()["refresh_token"]
 
-        existingRecord = Service.GetServiceRecordWithAuthDetails(self, {"Token": access_token})
-        if existingRecord is None:
-            uid_res = requests.post("https://api.sporttracks.mobi/api/v2/system/connect", headers={"Authorization": "Bearer %s" % access_token})
-            uid = uid_res.json()["user"]["uid"]
-        else:
-            uid = existingRecord.ExternalID
+        uid_res = requests.post("https://api.sporttracks.mobi/api/v2/system/connect", headers={"Authorization": "Bearer %s" % access_token})
+        uid = uid_res.json()["user"]["uid"]
 
         return (uid, {"RefreshToken": refresh_token})
 

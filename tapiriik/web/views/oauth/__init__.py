@@ -9,7 +9,7 @@ import json
 
 def authredirect(req, service, level=None):
     svc = Service.FromID(service)
-    return redirect(svc.GenerateUserAuthorizationURL(level))
+    return redirect(svc.GenerateUserAuthorizationURL(req.session, level))
 
 
 def authreturn(req, service, level=None):
@@ -17,7 +17,13 @@ def authreturn(req, service, level=None):
         success = False
     else:
         svc = Service.FromID(service)
-        uid, authData = svc.RetrieveAuthorizationToken(req, level)
+        try:
+            uid, authData = svc.RetrieveAuthorizationToken(req, level)
+        except Exception as e:
+            return render(req, "oauth-failure.html", {
+                "service": svc,
+                "error": str(e)
+            })
         serviceRecord = Service.EnsureServiceRecordWithAuth(svc, uid, authData)
 
         # auth by this service connection
@@ -33,14 +39,3 @@ def authreturn(req, service, level=None):
 
     return render(req, "oauth-return.html", {"success": 1 if success else 0})
 
-
-@csrf_exempt
-@require_POST
-def deauth(req, service):  # this is RK-specific
-    deauthData = json.loads(req.body.decode("ASCII"))
-    token = deauthData["access_token"]
-    svc = Service.FromID(service)
-    svcRecord = Service.GetServiceRecordWithAuthDetails(svc, {"Token": token})
-    Service.DeleteServiceRecord(svcRecord)
-    User.DisconnectService(svcRecord)
-    return HttpResponse(status=200)

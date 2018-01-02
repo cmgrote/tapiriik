@@ -14,6 +14,8 @@ from tapiriik.services.SportTracks import SportTracksService
 SportTracks = SportTracksService()
 from tapiriik.services.RideWithGPS import RideWithGPSService
 RideWithGPS = RideWithGPSService()
+from tapiriik.services.TrainAsONE import TrainAsONEService
+TrainAsONE = TrainAsONEService()
 from tapiriik.services.TrainingPeaks import TrainingPeaksService
 TrainingPeaks = TrainingPeaksService()
 from tapiriik.services.Motivato import MotivatoService
@@ -24,6 +26,16 @@ from tapiriik.services.VeloHero import VeloHeroService
 VeloHero = VeloHeroService()
 from tapiriik.services.TrainerRoad import TrainerRoadService
 TrainerRoad = TrainerRoadService()
+from tapiriik.services.Smashrun import SmashrunService
+Smashrun = SmashrunService()
+from tapiriik.services.BeginnerTriathlete import BeginnerTriathleteService
+BeginnerTriathlete = BeginnerTriathleteService()
+from tapiriik.services.Pulsstory import PulsstoryService
+Pulsstory = PulsstoryService()
+from tapiriik.services.Setio import SetioService
+Setio = SetioService()
+from tapiriik.services.Singletracker import SingletrackerService
+Singletracker = SingletrackerService()
 from tapiriik.services.Dailymile import DailymileService
 Dailymile = DailymileService()
 

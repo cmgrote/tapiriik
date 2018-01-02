@@ -54,6 +54,7 @@ class EndomondoService(ServiceBase):
         "snowshoeing": ActivityType.Walking,
         "wheelchair": ActivityType.Wheelchair,
         "climbing": ActivityType.Climbing,
+        "roller skiing": ActivityType.RollerSkiing,
         "treadmill walking": ActivityType.Walking
     }
 
@@ -71,7 +72,14 @@ class EndomondoService(ServiceBase):
         "swimming": ActivityType.Swimming,
         "other": ActivityType.Other,
         "wheelchair": ActivityType.Wheelchair,
-        "climbing" : ActivityType.Climbing
+        "climbing" : ActivityType.Climbing,
+        "roller skiing": ActivityType.RollerSkiing
+    }
+    
+    _activitiesThatDontRoundTrip = {
+        ActivityType.Cycling,
+        ActivityType.Running,
+        ActivityType.Walking
     }
 
     SupportedActivities = list(_activityMappings.values())
@@ -91,7 +99,7 @@ class EndomondoService(ServiceBase):
             params["resource_owner_secret"] = connection.Authorization["Secret"]
         return OAuth1Session(ENDOMONDO_CLIENT_KEY, client_secret=ENDOMONDO_CLIENT_SECRET, **params)
 
-    def GenerateUserAuthorizationURL(self, level=None):
+    def GenerateUserAuthorizationURL(self, session, level=None):
         oauthSession = self._oauthSession(callback_uri=WEB_ROOT + reverse("oauth_return", kwargs={"service": "endomondo"}))
         tokens = oauthSession.fetch_request_token("https://api.endomondo.com/oauth/request_token")
         redis_token_key = 'endomondo:oauth:%s' % tokens["oauth_token"]
@@ -191,7 +199,7 @@ class EndomondoService(ServiceBase):
                 if "title" in actInfo:
                     activity.Name = actInfo["title"]
 
-                activity.ServiceData = {"WorkoutID": int(actInfo["id"])}
+                activity.ServiceData = {"WorkoutID": int(actInfo["id"]), "Sport": actInfo["sport"]}
 
                 activity.CalculateUID()
                 activities.append(activity)
@@ -238,6 +246,8 @@ class EndomondoService(ServiceBase):
 
         activity.GPS = False
 
+        old_location = None
+        in_pause = False
         for pt in resp["points"]:
             wp = Waypoint()
             if "time" not in pt:
@@ -256,6 +266,21 @@ class EndomondoService(ServiceBase):
                 if "alt" in pt:
                     wp.Location.Altitude = pt["alt"]
 
+                if wp.Location == old_location:
+                    # We have seen the point with the same coordinates
+                    # before. This causes other services (e.g Strava) to
+                    # interpret this as if we were standing for a while,
+                    # which causes us having wrong activity time when
+                    # importing. We mark the point as paused in hopes this
+                    # fixes the issue.
+                    in_pause = True
+                    wp.Type = WaypointType.Pause
+                elif in_pause:
+                    in_pause = False
+                    wp.Type = WaypointType.Resume
+
+                old_location = wp.Location
+
             if "hr" in pt:
                 wp.HR = pt["hr"]
 
@@ -271,6 +296,19 @@ class EndomondoService(ServiceBase):
         csp.update(str(serviceRecord.ExternalID).encode("utf-8"))
         csp.update(SECRET_KEY.encode("utf-8"))
         return "tap-" + csp.hexdigest()
+    
+    def _getSport(self, activity):
+        # This is an activity type that doesn't round trip
+        if (activity.Type in self._activitiesThatDontRoundTrip and 
+        # We have the original sport
+        "Sport" in activity.ServiceData and 
+        # We know what this sport is
+        activity.ServiceData["Sport"] in self._activityMappings and 
+        # The type didn't change (if we changed from Walking to Cycling, we'd want to let the new value through)
+        activity.Type == self._activityMappings[activity.ServiceData["Sport"]]):
+            return activity.ServiceData["Sport"]
+        else:
+            return [k for k,v in self._reverseActivityMappings.items() if v == activity.Type][0]
 
     def UploadActivity(self, serviceRecord, activity):
         session = self._oauthSession(serviceRecord)
@@ -292,10 +330,12 @@ class EndomondoService(ServiceBase):
             serviceRecord.SetConfiguration({"DeviceRegistered": True})
 
         activity_id = "tap-" + activity.UID + "-" + str(os.getpid())
+        
+        sport = self._getSport(activity)
 
         upload_data = {
             "device_id": device_id,
-            "sport": [k for k,v in self._reverseActivityMappings.items() if v == activity.Type][0],
+            "sport": sport,
             "start_time": self._formatDate(activity.StartTime),
             "end_time": self._formatDate(activity.EndTime),
             "points": []
@@ -386,3 +426,8 @@ class EndomondoService(ServiceBase):
 
     def DeleteCachedData(self, serviceRecord):
         pass
+
+    def DeleteActivity(self, serviceRecord, uploadId):
+        session = self._oauthSession(serviceRecord)
+        del_res = session.delete("https://api.endomondo.com/api/1/workouts/%s" % uploadId)
+        del_res.raise_for_status()

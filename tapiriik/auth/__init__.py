@@ -39,7 +39,7 @@ class User:
 
     def Create(creationIP=None):
         uid = db.users.insert({"Created": datetime.utcnow(), "CreationIP": creationIP})  # will mongodb insert an almost empty doc, i.e. _id?
-        return db.users.find_one({"_id": uid}, read_preference=ReadPreference.PRIMARY)
+        return db.users.with_options(read_preference=ReadPreference.PRIMARY).find_one({"_id": uid})
 
     def GetConnectionRecordsByUser(user):
         return [ServiceRecord(x) for x in db.connections.find({"_id": {"$in": [x["ID"] for x in user["ConnectedServices"]]}})]
@@ -93,7 +93,7 @@ class User:
             "$or": [
                 {"Payments.Expiry": {"$gt": datetime.utcnow()}},
                 {"Promos.Expiry": {"$gt": datetime.utcnow()}},
-                {"Promos.Expiry": {"$eq": None, "$exists": True}}
+                {"Promos.Expiry": {"$type": 10, "$exists": True}} # === null
             ]
         }
 
@@ -165,6 +165,7 @@ class User:
         db.users.update({"_id": user["_id"]}, user)
         if delta or (hasattr(serviceRecord, "SyncErrors") and len(serviceRecord.SyncErrors) > 0):  # also schedule an immediate sync if there is an outstanding error (i.e. user reconnected)
             db.connections.update({"_id": serviceRecord._id}, {"$pull": {"SyncErrors": {"UserException.Type": UserExceptionType.Authorization}}}) # Pull all auth-related errors from the service so they don't continue to see them while the sync completes.
+            db.connections.update({"_id": serviceRecord._id}, {"$pull": {"SyncErrors": {"UserException.Type": UserExceptionType.RenewPassword}}}) # Pull all auth-related errors from the service so they don't continue to see them while the sync completes.
             Sync.SetNextSyncIsExhaustive(user, True)  # exhaustive, so it'll pick up activities from newly added services / ones lost during an error
             if hasattr(serviceRecord, "SyncErrors") and len(serviceRecord.SyncErrors) > 0:
                 Sync.ScheduleImmediateSync(user)

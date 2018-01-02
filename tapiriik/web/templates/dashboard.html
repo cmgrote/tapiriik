@@ -14,7 +14,7 @@
 		{% if user.ConnectedServices|length > 1 %}
 			{% infotip connectedWillSync %}Connected services will be synchronized {% if user|has_active_payment %}automatically{% else %}when you click Synchronize now{% endif %}{% endinfotip %}
 		{% else %}
-			{% infotip connectOneMore %}Connected a second service to synchronize your activities to &amp; from{% endinfotip %}
+			{% infotip connectOneMore %}Connect a second service to synchronize your activities to &amp; from{% endinfotip %}
 		{% endif %}
 		<div class="serviceButtonOuter">
 			<div class="serviceButtonWrap">
@@ -31,31 +31,29 @@
 		<div class="syncButtonBlock">
 			<div class="syncButtonAttachment left">Queueing to Synchronize</div><div class="syncButtonWrap"><a class="syncButton">Synchronize Now<div class="syncButtonIcon"></div></a><a href="#/settings" class="syncSettingsNubbin"><span class="sr">Synchronization Settings</span><div class="syncSettingsNubbinIcon"></div></a></div><div class="syncButtonAttachment right">Attached info 10%</div>
 		</div>
-		<br/>
 		{% include "settings-block.html" %}
-		{% include "recent-sync-activity-block.html" %}
-		<br/>
-	{% endif %}
-	{% if user.NonblockingSyncErrorCount > 0 %}
-		<a href="{% url 'activities_dashboard' %}" style="color:#aaa; font-size:80%;">Some activities could not be synchronized.</a><br/>
-	{% endif %}
 
-	{% if user.ConnectedServices|length > 1 %}
+		{% if user.NonblockingSyncErrorCount > 0 %}
+			<a href="{% url 'activities_dashboard' %}" style="color:#aaa; font-size:80%;">Some activities could not be synchronized.</a><br/>
+		{% endif %}
+
 		{% if user|has_active_payment %}
 		{% else %}
 			{% include "payment.html" %}
 		{% endif %}
-	{% endif %}
 
-	{% for connection in user.ConnectedServices|svc_populate_conns %}
-		{% with svc=connection.Service %}
-			{% for error in connection.SyncErrors %}
-				{% if error.UserException.InterventionRequired and error.Block %}
-					{% include "service-blockingexception.html" with provider=svc connection=connection exception=error %}
-				{% endif %}
-			{% endfor %}
-		{% endwith %}
-	{% endfor %}
+		{% for connection in user.ConnectedServices|svc_populate_conns %}
+			{% with svc=connection.Service %}
+				{% for error in connection.SyncErrors %}
+					{% if error.UserException.InterventionRequired and error.Block %}
+						{% include "service-blockingexception.html" with provider=svc connection=connection exception=error %}
+					{% endif %}
+				{% endfor %}
+			{% endwith %}
+		{% endfor %}
+
+		{% include "recent-sync-activity-block.html" %}
+	{% endif %}
 
 	{% for provider in user.ConnectedServices|svc_providers_except %}
 		{% if provider.ID not in config.soft_launch and provider.ID not in config.withdrawn_services %}
@@ -65,7 +63,7 @@
 	{% endfor %}
 
 {% else %}
-<p class="splashPreamble">tapiriik synchronizes your fitness activities between Garmin Connect, RunKeeper, Strava, TrainingPeaks, SportTracks.mobi, Endomondo, RideWithGPS, TrainerRoad, Motivato, Velo Hero, Epson RUNSENSE and Dropbox<br/>
+<p class="splashPreamble">tapiriik synchronizes your fitness activities between Garmin Connect, Runkeeper, Strava, TrainingPeaks, SportTracks.mobi, Endomondo, RideWithGPS, TrainAsONE, TrainerRoad, Motivato, Velo Hero, Epson RUNSENSE, Dropbox, Smashrun, BeginnerTriathlete, Pulsstory, Singletracker, and SETIO<br/>
 (your heart rate, cadence, power, and temperature data syncs too)</p>
 	{% for provider in service_providers %}
 		{% if provider.ID not in config.soft_launch and provider.ID not in config.withdrawn_services %}

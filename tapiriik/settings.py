@@ -69,6 +69,7 @@ STATICFILES_DIRS = (
 STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'pipeline.finders.PipelineFinder',
 #    'django.contrib.staticfiles.finders.DefaultStorageFinder',
 )
 
@@ -206,6 +207,7 @@ MONGO_CLIENT_OPTIONS = {}
 MONGO_FULL_WRITE_CONCERN = 1
 
 REDIS_HOST = "localhost"
+REDIS_CLIENT_OPTIONS = {}
 
 WEB_ROOT = 'http://localhost:8000'
 
@@ -219,7 +221,6 @@ PAYMENT_CURRENCY = "USD"
 
 # Celebration mode config
 # Because why not, I'm waiting for my account to get to the front of the sync queue.
-# Direct requests to contact@tapiriik.com
 
 CELEBRATION_MODES = {
     (
@@ -228,52 +229,8 @@ CELEBRATION_MODES = {
     ): {
         "Logo": "tapiriik-inuktitut.png",
         "Subtitle": "National Aboriginal Day",
-        "TitleText": "ᖃᐃᒋᑦ, ᐊᖅᑲᖅᑕ ᐅᖃᐅᓰᑦ ᐃᓚᑦᓯᓪᓗᒋᑦ ᐃᖕᒥᓐᓂᖕᓄᑦ ᑐᑭᓯᓯᓐᓈᔪᖕᓇᖅᑎᓪᓚᒋᑦ (Genesis 11:7)" # Fitting
-    },
-    (
-        datetime(day=28, month=6, year=2014, hour=0, minute=0), # Playing it safe
-        datetime(day=29, month=6, year=2014, hour=23, minute=59)
-    ): {
-        "Logo": "tapiriik-arabic.png", # تبريك
-        "Subtitle": "Ramadan Mubarak! !رمضان مبارك", # I'm trusting you, magic RTL support!
-        "TitleText": "(42:43) وَلَمَن صَبَرَ وَغَفَرَ إِنَّ ذَٰلِكَ لَمِنْ عَزْمِ الْأُمُورِ",
-        "BodyCSSClasses": "night crescent_moon starfield"
-    },
-    (
-        datetime(day=28, month=7, year=2014, hour=0, minute=0),
-        datetime(day=28, month=7, year=2014, hour=23, minute=59)
-    ): {
-        "Logo": "tapiriik-arabic.png",
-        "Subtitle": "Eid Mubarak! !عيد مبارك‎",
-        "TitleText": "(42:43) وَلَمَن صَبَرَ وَغَفَرَ إِنَّ ذَٰلِكَ لَمِنْ عَزْمِ الْأُمُورِ",
-        "BodyCSSClasses": "night crescent_moon starfield"
-    },
-    (
-        datetime(day=23, month=10, year=2014, hour=0, minute=0),
-        datetime(day=23, month=10, year=2014, hour=23, minute=59)
-    ): {
-        "Logo": "tapiriik-hindi.png", # तआपेरीक
-        "Subtitle": "Shubh Deepawali! शुभ दीपावली!",
-        "TitleText": "ॐ शान्ति शान्ति शान्ति",
-        "BodyCSSClasses": "night full_moon starfield"
-    },
-    (
-        datetime(day=6, month=11, year=2014, hour=0, minute=0),
-        datetime(day=6, month=11, year=2014, hour=23, minute=59)
-    ): {
-        "Logo": "tapiriik-punjabi.png", # ਤਾਪਿਰੀਕ
-        "Subtitle": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ!",
-        "TitleText": "ਆਪੁ ਗਇਆ ਸੁਖੁ ਪਾਇਆ ਮਿਲਿ ਸਲਲੈ ਸਲਲ ਸਮਾਇ"
-    },
-    (
-        datetime(day=24, month=9, year=2014, hour=18, minute=0),
-        datetime(day=26, month=9, year=2014, hour=18, minute=0)
-    ): {
-        "Logo": "tapiriik-hebrew.png", # טפּרכּ
-        "Subtitle": "!לְשָׁנָה טוֹבָה",
-        "TitleText": "הָבָה, נֵרְדָה, וְנָבְלָה שָׁם, שְׂפָתָם--אֲשֶׁר לֹא יִשְׁמְעוּ, אִישׁ שְׂפַת רֵעֵהוּ. (Genesis 11:7)",
-        "BodyCSSClasses": "night crescent_moon starfield"
-    },
+        "TitleText": "Our Home on Native Land"
+    }
 }
 
 
@@ -311,6 +268,8 @@ WORKER_INDEX = int(os.environ.get("TAPIRIIK_WORKER_INDEX", 0))
 HTTP_SOURCE_ADDR = "0.0.0.0"
 
 RABBITMQ_BROKER_URL = "amqp://guest@localhost//"
+
+RABBITMQ_USER_QUEUE_STATS_URL = "http://guest:guest@localhost:15672/api/queues/%2F/tapiriik-users?lengths_age=3600&lengths_incr=60&msg_rates_age=3600&msg_rates_incr=60"
 
 GARMIN_CONNECT_USER_WATCH_ACCOUNTS = {}
 

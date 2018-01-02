@@ -44,13 +44,17 @@ class APIExcludeActivity(Exception):
 class UserExceptionType:
     # Account-level exceptions (not a hardcoded thing, just to keep these seperate)
     Authorization = "auth"
+    RenewPassword = "renew_password"
+    Locked = "locked"
     AccountFull = "full"
     AccountExpired = "expired"
     AccountUnpaid = "unpaid" # vs. expired, which implies it was at some point function, via payment or trial or otherwise.
+    NonAthleteAccount = "non_athlete_account" # trainingpeaks
 
     # Activity-level exceptions
     FlowException = "flow"
     Private = "private"
+    NoSupplier = "nosupplier"
     NotTriggered = "notrigger"
     Deferred = "deferred" # They've instructed us not to synchronize activities for some time after they complete
     PredatesWindow = "predates_window" # They've instructed us not to synchronize activities before some date

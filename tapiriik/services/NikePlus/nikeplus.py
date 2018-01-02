@@ -72,7 +72,7 @@ class NikePlusService(ServiceBase):
 
     SupportedActivities = list(_reverseActivityMappings.values())
 
-    _sessionCache = SessionCache(lifetime=timedelta(minutes=45), freshen_on_get=False)
+    _sessionCache = SessionCache("nikeplus", lifetime=timedelta(minutes=45), freshen_on_get=False)
 
     _obligatoryHeaders = {
         "User-Agent": "NPConnect",
@@ -190,11 +190,15 @@ class NikePlusService(ServiceBase):
         return activities, exclusions
 
     def _nikeStream(self, stream, values_collection="values"):
-        if stream["intervalUnit"] != "SEC":
+        interval_secs = {
+            "SEC": 1,
+            "MIN": 60
+        }
+        if stream["intervalUnit"] not in interval_secs:
             # Who knows if they ever return it in a different unit? Their docs don't give a list
             raise Exception("Unknown stream interval unit %s" % stream["intervalUnit"])
 
-        interval = timedelta(seconds=stream["intervalMetric"]).total_seconds()
+        interval = stream["intervalMetric"] * interval_secs[stream["intervalUnit"]]
         for x in range(len(stream[values_collection])):
             yield (interval * x, stream[values_collection][x])
 
@@ -334,3 +338,8 @@ class NikePlusService(ServiceBase):
     def DeleteCachedData(self, serviceRecord):
         # nothing cached...
         pass
+
+    def DeleteActivity(self, serviceRecord, uploadId):
+        session = self._get_session(serviceRecord)
+        del_res = session.delete("https://api.nike.com/v1/me/sport/activities/%d" % uploadId)
+        del_res.raise_for_status()

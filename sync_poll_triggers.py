@@ -24,10 +24,10 @@ celery_app = Celery('sync_poll_triggers', broker=RABBITMQ_BROKER_URL)
 celery_app.config_from_object(_celeryConfig())
 
 @worker_shutdown.connect
-def celery_shutdown():
+def celery_shutdown(**kwargs):
     close_connections()
 
-@celery_app.task()
+@celery_app.task(acks_late=True)
 def trigger_poll(service_id, index):
     from tapiriik.auth import User
     print("Polling %s-%d" % (service_id, index))

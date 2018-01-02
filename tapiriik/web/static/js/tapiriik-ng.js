@@ -11,11 +11,13 @@ function ActivitiesController($scope, $http) {
     var type = presc.Exception.Type;
     var explanations = {
       "auth": "The credentials you entered for %(service) are no longer functional - visit the dashboard to re-authorize tapiriik.",
+      "renew_password": "The credentials you entered for %(service) are no longer functional - visit the dashboard to re-authorize tapiriik.",
       "full": "Your %(service) account is full. Make some space available then visit the dashboard to re-synchronize.",
       "expired": "Your %(service) account has expired. Once it's back in action, visit the dashboard to re-synchronize.",
       "unpaid": "You must have a paid account with %(service) in order to synchronize activities.",
       "flow": "You've excluded this activity from synchronizing to %(service).",
       "private": "This activity is private and will not synchronize to %(service).",
+      "nosupplier": "This activity is uploaded to a service which does not support downloading activities.",
       "notrigger": "%(service) is only synchronized when new activities are available.", // I have nooo clue why I made this error, keeping it for posterity.
       // Temporary fix since lots of people are seeing this now, and I might as well assign blame accurately (or be vague)
       "ratelimited": "Some services limit how many actions tapiriik can perform on your behalf per hour - more activities will transfer soon.", // per hour - close enough
@@ -27,7 +29,7 @@ function ActivitiesController($scope, $http) {
       "nongps": "%(service) does not support non-GPS activities with other sensor data.",
       "type_unsupported": "%(service) does not support this type of activity.",
       "data_insufficient": "%(service) requires more data than this activity contains.",
-      "download": "An error occured when retrieving the activity data to upload to %(service).",
+      "download": "An error occurred when retrieving the activity data to upload to %(service).",
       "list": "There was a problem indexing your activities on %(service), so no activities will be uploaded to %(service).",
       "upload": "There was a problem uploading this activity to %(service).",
       "sanity": "This activity contains unusual data that is most likely incorrect.",
@@ -87,7 +89,7 @@ function SyncSettingsController($scope, $http, $window){
     }
   });
   $scope.sync_suppress_options = [{k: true, v: "manually"}, {k: false, v: "automatically"}];
-  $scope.sync_delay_options = [{k: 0, v: "as soon as possible"}, {k: 20*60, v: "20 minutes"}, {k: 60*60, v: "1 hour"}];
+  $scope.sync_delay_options = [{k: 0, v: "as soon as possible"}, {k: 20*60, v: "20 minutes"}, {k: 60*60, v: "1 hour"}, {k: 60*60*3, v: "3 hours"}, {k: 60*60*6, v: "6 hours"}, {k: 60*60*12, v: "12 hours"}, {k: 60*60*24, v: "1 day"}];
   $scope.save = function(){
     if (isNaN(Date.parse($scope.sync_skip_before_entry)) && $scope.sync_skip_before_entry) {
       alert("Double-check that date");
@@ -123,6 +125,39 @@ function RecentSyncActivityController($scope, $http) {
     });
   };
   update_recent_activity();
+};
+
+function RollbackDashboardController($scope, $http) {
+  $scope.step = 'pre';
+  $scope.executing = false;
+
+  $scope.DisplayNameByService = function(svcId){ return tapiriik.ServiceInfo[svcId].DisplayName; };
+
+  $scope.fetchList = function(){
+    $scope.step = 'fetch-list';
+    $http.get("/account/rollback/").success(function(task){
+      $scope.task = task;
+      $scope.step = 'list';
+    });
+  };
+
+  $scope.execute = function() {
+    var confirm_coefficient = Math.floor(Math.random() * 11);
+    var confirm_base = $scope.task.PendingDeletionCount;
+    var confirm_res = prompt("Just to confirm, what's the value of " + confirm_base + " (the number of activities about to be deleted) multiplied by " + confirm_coefficient + "? LAST CHANCE - ONCE THE PROCESS BEGINS IT CANNOT BE CANCELLED.");
+    if (parseInt(confirm_res) === confirm_base * confirm_coefficient) {
+      $http.post("/account/rollback/" + $scope.task._id).success(function(task) {
+        $scope.executing = true;
+        setInterval(function(){
+          $http.get("/account/rollback/" + $scope.task._id).success(function(task){
+            $scope.task = task;
+          });
+        }, 5000);
+      });
+    } else {
+      alert("Rollback aborted - no activities will be deleted.");
+    }
+  };
 };
 
 angular.module('tapiriik', []).config(function($interpolateProvider) {

@@ -9,7 +9,8 @@ class Service:
     # These options are used as the back for all service record's configurations
     _globalConfigurationDefaults = {
         "sync_private": False,
-        "allow_activity_flow_exception_bypass_via_self": False
+        "allow_activity_flow_exception_bypass_via_self": False,
+        "auto_pause": False
     }
 
     def Init():
@@ -24,7 +25,27 @@ class Service:
         raise ValueError
 
     def List():
-        return [RunKeeper, Strava, GarminConnect, SportTracks, Dropbox, TrainingPeaks, RideWithGPS, Endomondo, Motivato, NikePlus, VeloHero, TrainerRoad, Dailymile] + PRIVATE_SERVICES
+        return [
+            RunKeeper,
+            Strava,
+            GarminConnect,
+            Endomondo,
+            SportTracks,
+            Dropbox,
+            TrainingPeaks,
+            RideWithGPS,
+            TrainAsONE,
+            Pulsstory,
+            Motivato,
+            NikePlus,
+            VeloHero,
+            TrainerRoad,
+            Smashrun,
+            BeginnerTriathlete,
+            Setio,
+            Singletracker,
+            Dailymile
+        ] + PRIVATE_SERVICES
 
     def PreferredDownloadPriorityList():
         # Ideally, we'd make an informed decision based on whatever features the activity had
@@ -33,16 +54,22 @@ class Service:
         return [
             TrainerRoad, # Special case, since TR has a lot more data in some very specific areas
             GarminConnect, # The reference
+            Smashrun,  # TODO: not sure if this is the right place, but it seems to have a lot of data
             SportTracks, # Pretty much equivalent to GC, no temperature (not that GC temperature works all thar well now, but I digress)
             TrainingPeaks, # No seperate run cadence, but has temperature
             Dropbox, # Equivalent to any of the above
             RideWithGPS, # Uses TCX for everything, so same as Dropbox
+            TrainAsONE,
             VeloHero, # PWX export, no temperature
             Strava, # No laps
             Endomondo, # No laps, no cadence
             RunKeeper, # No laps, no cadence, no power
+            BeginnerTriathlete, # No temperature
             Motivato,
             NikePlus,
+            Pulsstory,
+            Setio,
+            Singletracker,
             Dailymile
         ] + PRIVATE_SERVICES
 
@@ -52,9 +79,6 @@ class Service:
         for itm in Service.List():
             itm.WebInit()
             itm.UserDisconnectURL = WEB_ROOT + reverse("auth_disconnect", kwargs={"service": itm.ID})
-
-    def GetServiceRecordWithAuthDetails(service, authDetails):
-        return ServiceRecord(db.connections.find_one({"Service": service.ID, "Authorization": authDetails}))
 
     def GetServiceRecordByID(uid):
         return ServiceRecord(db.connections.find_one({"_id": ObjectId(uid)}))

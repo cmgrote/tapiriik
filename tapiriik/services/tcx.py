@@ -40,13 +40,6 @@ class TCXIO:
         if xact is None:
             raise ValueError("No activity element in TCX")
 
-        xauthor = root.find("tcx:Author", namespaces=ns)
-        if xauthor is not None:
-            xauthorname = xauthor.find("tcx:Name", namespaces=ns)
-            if xauthorname is not None:
-                if xauthorname.text == "tapiriik":
-                    act.OriginatedFromTapiriik = True
-
         if not act.Type or act.Type == ActivityType.Other:
             if xact.attrib["Sport"] == "Biking":
                 act.Type = ActivityType.Cycling
@@ -54,8 +47,11 @@ class TCXIO:
                 act.Type = ActivityType.Running
 
         xnotes = xact.find("tcx:Notes", namespaces=ns)
-        if xnotes is not None:
-            act.Notes = xnotes.text
+        if xnotes is not None and xnotes.text:
+            xnotes_lines = xnotes.text.splitlines()
+            act.Name = xnotes_lines[0]
+            if len(xnotes_lines) > 1:
+                act.Notes = '\n'.join(xnotes_lines[1:])
 
         xcreator = xact.find("tcx:Creator", namespaces=ns)
         if xcreator is not None and xcreator.attrib["{" + TCXIO.Namespaces["xsi"] + "}type"] == "Device_t":
@@ -257,9 +253,6 @@ class TCXIO:
 
         dateFormat = "%Y-%m-%dT%H:%M:%S.000Z"
 
-        if activity.Name is not None:
-            etree.SubElement(act, "Notes").text = activity.Name
-
         if activity.Type == ActivityType.Cycling:
             act.attrib["Sport"] = "Biking"
         elif activity.Type == ActivityType.Running:
@@ -368,6 +361,13 @@ class TCXIO:
                 exts = xlap.find("Extensions")
                 if exts is not None:
                     track.addnext(exts)
+
+        if activity.Name is not None and activity.Notes is not None:
+            etree.SubElement(act, "Notes").text = '\n'.join((activity.Name, activity.Notes))
+        elif activity.Name is not None:
+            etree.SubElement(act, "Notes").text = activity.Name
+        elif activity.Notes is not None:
+            etree.SubElement(act, "Notes").text = '\n' + activity.Notes
 
         if activity.Device and activity.Device.Identifier:
             devId = DeviceIdentifier.FindEquivalentIdentifierOfType(DeviceIdentifierType.TCX, activity.Device.Identifier)

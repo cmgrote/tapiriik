@@ -16,6 +16,7 @@ import logging
 import pytz
 import re
 import time
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,12 @@ class StravaService(ServiceBase):
     UserProfileURL = "http://www.strava.com/athletes/{0}"
     UserActivityURL = "http://app.strava.com/activities/{1}"
     AuthenticationNoFrame = True  # They don't prevent the iframe, it just looks really ugly.
+    PartialSyncRequiresTrigger = True
     LastUpload = None
 
     SupportsHR = SupportsCadence = SupportsTemp = SupportsPower = True
+
+    SupportsActivityDeletion = True
 
     # For mapping common->Strava; no ambiguity in Strava activity type
     _activityTypeMappings = {
@@ -45,12 +49,17 @@ class StravaService(ServiceBase):
         ActivityType.Swimming: "Swim",
         ActivityType.Gym: "Workout",
         ActivityType.Rowing: "Rowing",
-        ActivityType.Elliptical: "Elliptical"
+        ActivityType.Elliptical: "Elliptical",
+        ActivityType.RollerSkiing: "RollerSki",
+        ActivityType.StrengthTraining: "WeightTraining",
+        ActivityType.Climbing: "RockClimbing",
     }
 
     # For mapping Strava->common
     _reverseActivityTypeMappings = {
         "Ride": ActivityType.Cycling,
+        "VirtualRide": ActivityType.Cycling,
+        "EBikeRide": ActivityType.Cycling,
         "MountainBiking": ActivityType.MountainBiking,
         "Run": ActivityType.Running,
         "Hike": ActivityType.Hiking,
@@ -59,19 +68,29 @@ class StravaService(ServiceBase):
         "CrossCountrySkiing": ActivityType.CrossCountrySkiing,
         "NordicSki": ActivityType.CrossCountrySkiing,
         "BackcountrySki": ActivityType.DownhillSkiing,
+        "Snowboard": ActivityType.Snowboarding,
         "Swim": ActivityType.Swimming,
         "IceSkate": ActivityType.Skating,
         "Workout": ActivityType.Gym,
         "Rowing": ActivityType.Rowing,
-        "Elliptical": ActivityType.Elliptical
+        "Kayaking": ActivityType.Rowing,
+        "Canoeing": ActivityType.Rowing,
+        "StandUpPaddling": ActivityType.Rowing,
+        "Elliptical": ActivityType.Elliptical,
+        "RollerSki": ActivityType.RollerSkiing,
+        "WeightTraining": ActivityType.StrengthTraining,
+        "RockClimbing" : ActivityType.Climbing,
     }
 
     SupportedActivities = list(_activityTypeMappings.keys())
 
     GlobalRateLimits = STRAVA_RATE_LIMITS
 
+    def UserUploadedActivityURL(self, uploadId):
+        return "https://www.strava.com/activities/%d" % uploadId
+
     def WebInit(self):
-        params = {'scope':'write view_private',
+        params = {'scope':'write,view_private',
                   'client_id':STRAVA_CLIENT_ID,
                   'response_type':'code',
                   'redirect_uri':WEB_ROOT + reverse("oauth_return", kwargs={"service": "strava"})}
@@ -85,7 +104,6 @@ class StravaService(ServiceBase):
         code = req.GET.get("code")
         params = {"grant_type": "authorization_code", "code": code, "client_id": STRAVA_CLIENT_ID, "client_secret": STRAVA_CLIENT_SECRET, "redirect_uri": WEB_ROOT + reverse("oauth_return", kwargs={"service": "strava"})}
 
-        self._globalRateLimit()
         response = requests.post("https://www.strava.com/oauth/token", data=params)
         if response.status_code != 200:
             raise APIException("Invalid code")
@@ -93,12 +111,13 @@ class StravaService(ServiceBase):
 
         authorizationData = {"OAuthToken": data["access_token"]}
         # Retrieve the user ID, meh.
-        self._globalRateLimit()
         id_resp = requests.get("https://www.strava.com/api/v3/athlete", headers=self._apiHeaders(ServiceRecord({"Authorization": authorizationData})))
         return (id_resp.json()["id"], authorizationData)
 
     def RevokeAuthorization(self, serviceRecord):
-        #  you can't revoke the tokens strava distributes :\
+        resp = requests.post("https://www.strava.com/oauth/deauthorize", headers=self._apiHeaders(serviceRecord))
+        if resp.status_code != 204 and resp.status_code != 200:
+            raise APIException("Unable to deauthorize Strava auth token, status " + str(resp.status_code) + " resp " + resp.text)
         pass
 
     def DownloadActivityList(self, svcRecord, exhaustive=False):
@@ -110,14 +129,16 @@ class StravaService(ServiceBase):
             if before is not None and before < 0:
                 break # Caused by activities that "happened" before the epoch. We generally don't care about those activities...
             logger.debug("Req with before=" + str(before) + "/" + str(earliestDate))
-            self._globalRateLimit()
             resp = requests.get("https://www.strava.com/api/v3/athletes/" + str(svcRecord.ExternalID) + "/activities", headers=self._apiHeaders(svcRecord), params={"before": before})
             if resp.status_code == 401:
                 raise APIException("No authorization to retrieve activity list", block=True, user_exception=UserException(UserExceptionType.Authorization, intervention_required=True))
 
             earliestDate = None
 
-            reqdata = resp.json()
+            try:
+                reqdata = resp.json()
+            except ValueError:
+                raise APIException("Failed parsing strava list response %s - %s" % (resp.status_code, resp.text))
 
             if not len(reqdata):
                 break  # No more activities to see
@@ -170,6 +191,26 @@ class StravaService(ServiceBase):
 
         return activities, exclusions
 
+    def SubscribeToPartialSyncTrigger(self, serviceRecord):
+        # There is no per-user webhook subscription with Strava.
+        serviceRecord.SetPartialSyncTriggerSubscriptionState(True)
+
+    def UnsubscribeFromPartialSyncTrigger(self, serviceRecord):
+        # As above.
+        serviceRecord.SetPartialSyncTriggerSubscriptionState(False)
+
+    def ExternalIDsForPartialSyncTrigger(self, req):
+        data = json.loads(req.body.decode("UTF-8"))
+        return [data["owner_id"]]
+
+    def PartialSyncTriggerGET(self, req):
+        # Strava requires this endpoint to echo back a challenge.
+        # Only happens once during manual endpoint setup?
+        from django.http import HttpResponse
+        return HttpResponse(json.dumps({
+            "hub.challenge": req.GET["hub.challenge"]
+        }))
+
     def DownloadActivity(self, svcRecord, activity):
         if activity.ServiceData["Manual"]:  # I should really add a param to DownloadActivity for this value as opposed to constantly doing this
             # We've got as much information as we're going to get - we need to copy it into a Lap though.
@@ -177,7 +218,6 @@ class StravaService(ServiceBase):
             return activity
         activityID = activity.ServiceData["ActivityID"]
 
-        self._globalRateLimit()
         streamdata = requests.get("https://www.strava.com/api/v3/activities/" + str(activityID) + "/streams/time,altitude,heartrate,cadence,watts,temp,moving,latlng,distance,velocity_smooth", headers=self._apiHeaders(svcRecord))
         if streamdata.status_code == 401:
             raise APIException("No authorization to download activity", block=True, user_exception=UserException(UserExceptionType.Authorization, intervention_required=True))
@@ -285,10 +325,9 @@ class StravaService(ServiceBase):
                 fitData = activity.PrerenderedFormats["fit"]
             else:
                 # TODO: put the fit back into PrerenderedFormats once there's more RAM to go around and there's a possibility of it actually being used.
-                fitData = FITIO.Dump(activity)
+                fitData = FITIO.Dump(activity, drop_pauses=True)
             files = {"file":("tap-sync-" + activity.UID + "-" + str(os.getpid()) + ("-" + source_svc if source_svc else "") + ".fit", fitData)}
 
-            self._globalRateLimit()
             response = requests.post("https://www.strava.com/api/v3/uploads", data=req, files=files, headers=self._apiHeaders(serviceRecord))
             if response.status_code != 201:
                 if response.status_code == 401:
@@ -303,7 +342,6 @@ class StravaService(ServiceBase):
             upload_poll_wait = 8 # The mode of processing times
             while not response.json()["activity_id"]:
                 time.sleep(upload_poll_wait)
-                self._globalRateLimit()
                 response = requests.get("https://www.strava.com/api/v3/uploads/%s" % upload_id, headers=self._apiHeaders(serviceRecord))
                 logger.debug("Waiting for upload - status %s id %s" % (response.json()["status"], response.json()["activity_id"]))
                 if response.json()["error"]:
@@ -326,7 +364,6 @@ class StravaService(ServiceBase):
                     "elapsed_time": round((activity.EndTime - activity.StartTime).total_seconds())
                 }
             headers = self._apiHeaders(serviceRecord)
-            self._globalRateLimit()
             response = requests.post("https://www.strava.com/api/v3/activities", data=req, headers=headers)
             # FFR this method returns the same dict as the activity listing, as REST services are wont to do.
             if response.status_code != 201:
@@ -341,3 +378,8 @@ class StravaService(ServiceBase):
     def DeleteCachedData(self, serviceRecord):
         cachedb.strava_cache.remove({"Owner": serviceRecord.ExternalID})
         cachedb.strava_activity_cache.remove({"Owner": serviceRecord.ExternalID})
+
+    def DeleteActivity(self, serviceRecord, uploadId):
+        headers = self._apiHeaders(serviceRecord)
+        del_res = requests.delete("https://www.strava.com/api/v3/activities/%d" % uploadId, headers=headers)
+        del_res.raise_for_status()
